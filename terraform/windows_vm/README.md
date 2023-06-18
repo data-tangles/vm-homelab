@@ -34,7 +34,6 @@ No modules.
 | <a name="input_vhd_path"></a> [vhd\_path](#input\_vhd\_path) | Path for the destination VHD | `string` | n/a | yes |
 | <a name="input_vhd_source"></a> [vhd\_source](#input\_vhd\_source) | Source VHD file | `string` | n/a | yes |
 | <a name="input_vm_name"></a> [vm\_name](#input\_vm\_name) | Name of the VM | `string` | n/a | yes |
-| <a name="input_vm_nic_name"></a> [vm\_nic\_name](#input\_vm\_nic\_name) | Name of the VM NIC | `string` | n/a | yes |
 | <a name="input_vm_processor_count"></a> [vm\_processor\_count](#input\_vm\_processor\_count) | Number of processors for the VM | `string` | n/a | yes |
 | <a name="input_vm_switch_name"></a> [vm\_switch\_name](#input\_vm\_switch\_name) | Name of the Virtual Switch to use for the VM | `string` | n/a | yes |
 

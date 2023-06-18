@@ -14,7 +14,7 @@ resource "hyperv_machine_instance" "windows_vm" {
 
   vm_firmware {
     enable_secure_boot   = "On"
-    secure_boot_template = "MicrosoftWindows"
+    secure_boot_template = "MicrosoftUEFICertificateAuthority"
     boot_order {
       boot_type           = "HardDiskDrive"
       controller_number   = "0"
