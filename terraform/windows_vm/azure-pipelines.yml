@@ -1,0 +1,93 @@
+parameters:
+  - name: terraformVersion
+    type: string
+    default: 'latest'
+  - name: agentPool
+    displayName: 'Agent Pool Selection'
+    type: string
+    default: Self-Hosted
+    values:
+    - Self-Hosted
+    - Oracle-Cloud
+
+trigger:
+- none
+
+stages:
+  - stage: 'HyperV_WindowsVM'
+    dependsOn: []
+    displayName: 'Hyper-V Windows VM'
+
+    jobs:
+      - job: 'terraforminitplan'
+        displayName: 'Initialize and Plan Terraform for Hyper-V Windows VM'
+        pool: ${{ parameters.agentPool }}
+
+        steps:
+
+          - task: TerraformInstaller@0
+            displayName: 'Terraform Install'
+            inputs:
+              terraformVersion: ${{ parameters.terraformVersion }}
+  
+          - task: CmdLine@2       
+            inputs:
+              script: |
+                terraform init -backend-config="/terraform/variables/vm-homelab/windows/backend.tf"
+              workingDirectory: '$(System.DefaultWorkingDirectory)/terraform/windows_vm/'
+
+          - task: CmdLine@2
+            inputs:
+              script: |
+                terraform plan -var-file="/terraform/variables/vm-homelab/windows/prod.tfvars" -out ${BUILD_BUILDNUMBER}.tfplan
+              workingDirectory: '$(System.DefaultWorkingDirectory)/terraform/windows_vm/'
+
+          - task: ArchiveFiles@2
+            condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+            displayName: 'Create Plan Artifact'
+            inputs:
+              rootFolderOrFile: '$(System.DefaultWorkingDirectory)/terraform/windows_vm/'
+              includeRootFolder: false
+              archiveType: 'tar'
+              tarCompression: 'gz'
+              archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildNumber).tgz'
+              replaceExistingArchive: true
+            
+          - task: PublishPipelineArtifact@1
+            condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+            displayName: 'Publish Plan Artifact'
+            inputs:
+              targetPath: '$(Build.ArtifactStagingDirectory)'
+              artifactName: 'windows-vm-plan'
+
+  - stage: 'HyperV_WindowsVM_Apply'
+    dependsOn: 'HyperV_WindowsVM'
+    displayName: Hyper-V Windows VM Apply
+
+    jobs:
+      - deployment: 'TerraformApplyHyperVWindowsVM'   
+        displayName: ' Apply Terraform for Hyper-V Windows VM'
+        pool: ${{ parameters.agentPool }}
+        environment: 'On-Prem'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+
+              - task: TerraformInstaller@0
+                displayName: 'Terraform Install'
+                inputs:
+                  terraformVersion: ${{ parameters.terraformVersion }}
+                  
+              - task: ExtractFiles@1
+                displayName: 'Extract Plan Artifact'
+                inputs:
+                  archiveFilePatterns: '$(Pipeline.Workspace)/windows-vm-plan/$(Build.BuildNumber).tgz'
+                  destinationFolder: '$(System.DefaultWorkingDirectory)/terraform/windows_vm/'
+                  cleanDestinationFolder: true
+
+              - task: CmdLine@2
+                inputs:
+                  script: |
+                    terraform apply ${BUILD_BUILDNUMBER}.tfplan
+                  workingDirectory: '$(System.DefaultWorkingDirectory)/terraform/windows_vm/'

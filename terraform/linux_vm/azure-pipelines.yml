@@ -1,0 +1,93 @@
+parameters:
+  - name: terraformVersion
+    type: string
+    default: 'latest'
+  - name: agentPool
+    displayName: 'Agent Pool Selection'
+    type: string
+    default: Self-Hosted
+    values:
+    - Self-Hosted
+    - Oracle-Cloud
+
+trigger:
+- none
+
+stages:
+  - stage: 'HyperV_LinuxVM'
+    dependsOn: []
+    displayName: 'Hyper-V Linux VM'
+
+    jobs:
+      - job: 'terraforminitplan'
+        displayName: 'Initialize and Plan Terraform for Hyper-V Linux VM'
+        pool: ${{ parameters.agentPool }}
+
+        steps:
+
+          - task: TerraformInstaller@0
+            displayName: 'Terraform Install'
+            inputs:
+              terraformVersion: ${{ parameters.terraformVersion }}
+  
+          - task: CmdLine@2       
+            inputs:
+              script: |
+                terraform init -backend-config="/terraform/variables/vm-homelab/linux/backend.tf"
+              workingDirectory: '$(System.DefaultWorkingDirectory)/terraform/linux_vm/'
+
+          - task: CmdLine@2
+            inputs:
+              script: |
+                terraform plan -var-file="/terraform/variables/vm-homelab/linux/prod.tfvars" -out ${BUILD_BUILDNUMBER}.tfplan
+              workingDirectory: '$(System.DefaultWorkingDirectory)/terraform/linux_vm/'
+
+          - task: ArchiveFiles@2
+            condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+            displayName: 'Create Plan Artifact'
+            inputs:
+              rootFolderOrFile: '$(System.DefaultWorkingDirectory)/terraform/linux_vm/'
+              includeRootFolder: false
+              archiveType: 'tar'
+              tarCompression: 'gz'
+              archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildNumber).tgz'
+              replaceExistingArchive: true
+            
+          - task: PublishPipelineArtifact@1
+            condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+            displayName: 'Publish Plan Artifact'
+            inputs:
+              targetPath: '$(Build.ArtifactStagingDirectory)'
+              artifactName: 'linux-vm-plan'
+
+  - stage: 'HyperV_LinuxVM_Apply'
+    dependsOn: 'HyperV_LinuxVM'
+    displayName: Hyper-V Linux VM Apply
+
+    jobs:
+      - deployment: 'TerraformApplyHyperVLinuxVM'   
+        displayName: ' Apply Terraform for Hyper-V Linux VM'
+        pool: ${{ parameters.agentPool }}
+        environment: 'On-Prem'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+
+              - task: TerraformInstaller@0
+                displayName: 'Terraform Install'
+                inputs:
+                  terraformVersion: ${{ parameters.terraformVersion }}
+                  
+              - task: ExtractFiles@1
+                displayName: 'Extract Plan Artifact'
+                inputs:
+                  archiveFilePatterns: '$(Pipeline.Workspace)/linux-vm-plan/$(Build.BuildNumber).tgz'
+                  destinationFolder: '$(System.DefaultWorkingDirectory)/terraform/linux_vm/'
+                  cleanDestinationFolder: true
+
+              - task: CmdLine@2
+                inputs:
+                  script: |
+                    terraform apply ${BUILD_BUILDNUMBER}.tfplan
+                  workingDirectory: '$(System.DefaultWorkingDirectory)/terraform/linux_vm/'
